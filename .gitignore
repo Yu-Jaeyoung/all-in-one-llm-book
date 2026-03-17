@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm+all,macos
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,pycharm+all,macos
 
+.env
+!.env.template
+
 ### macOS ###
 # General
 .DS_Store
@@ -8,7 +11,8 @@
 .LSOverride
 
 # Icon must end with two \r
-Icon
+Icon
+
 
 # Thumbnails
 ._*
