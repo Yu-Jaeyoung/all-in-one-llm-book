@@ -1,0 +1,48 @@
+model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+dataset_name: "beomi/KoAlpaca-v1.1a"
+dataset_path: null
+dataset_split: "train"
+dataset_test_size: 0.1
+question_key: "instruction"
+input_key: "input"
+answer_key: "output"
+attn_implementation: "sdpa"
+preview_samples: 2
+
+output_dir: "./llama-3.1-korean-8b-hf-5-epoch"
+run_name: "llama-3.1-korean-8b-full-ft"
+report_to:
+  - "wandb"
+
+do_train: true
+do_eval: true
+eval_strategy: "epoch"
+learning_rate: 0.00005
+lr_scheduler_type: "linear"
+num_train_epochs: 5
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 2
+gradient_accumulation_steps: 4
+optim: "adamw_torch_fused"
+logging_steps: 10
+save_strategy: "epoch"
+save_total_limit: 2
+weight_decay: 0.01
+max_grad_norm: 0.5
+warmup_steps: 180
+
+bf16: false
+fp16: true
+tf32: false
+gradient_checkpointing: false
+
+max_length: 512
+packing: false
+
+fsdp: "full_shard auto_wrap"
+fsdp_config:
+  activation_checkpointing: true
+  backward_prefetch: "backward_pre"
+  forward_prefetch: false
+  use_orig_params: false
