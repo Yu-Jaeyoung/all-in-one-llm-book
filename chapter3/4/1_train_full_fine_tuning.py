@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 from datasets import Dataset, load_dataset
 from huggingface_hub import login
-from transformers import AutoTokenizer, set_seed
+from transformers import AutoConfig, AutoTokenizer, set_seed
 from trl import SFTConfig, SFTTrainer, TrlParser
 import yaml
 
@@ -82,7 +82,7 @@ class ScriptArguments:
 
 
 def maybe_hf_login() -> None:
-    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
     if token:
         login(token=token, add_to_git_credential=False)
 
@@ -328,6 +328,28 @@ def configure_tokenizer(model_name: str) -> AutoTokenizer:
     return tokenizer
 
 
+def validate_model_access(model_name: str) -> None:
+    try:
+        AutoConfig.from_pretrained(model_name)
+    except Exception as error:
+        message = str(error)
+        gated_repo_markers = (
+            "gated repo",
+            "403 client error",
+            "cannot access gated repo",
+            "authorized list",
+        )
+        if any(marker in message.lower() for marker in gated_repo_markers):
+            raise RuntimeError(
+                "Cannot access the configured model on Hugging Face Hub.\n"
+                f"- model_name: {model_name}\n"
+                "- The account behind HF_TOKEN/HUGGINGFACE_HUB_TOKEN (or your cached hf auth login) "
+                "does not have permission for this gated repo.\n"
+                "- Request access on the model page, or change model_name to a repo you can access."
+            ) from error
+        raise
+
+
 def ensure_chat_template_if_needed(tokenizer: AutoTokenizer, dataset: Dataset, training_args: SFTConfig) -> None:
     sample = next(iter(dataset))
     uses_chat_messages = any(key in sample for key in ("messages", "prompt"))
@@ -385,8 +407,12 @@ def training_function(script_args: ScriptArguments, training_args: SFTConfig) ->
 
     training_args.model_init_kwargs = build_model_init_kwargs(training_args, script_args)
 
-    train_dataset, eval_dataset = load_datasets(script_args, training_args)
+    with training_args.main_process_first(desc="Validate model access"):
+        if is_primary_process():
+            validate_model_access(script_args.model_name)
+
     tokenizer = configure_tokenizer(script_args.model_name)
+    train_dataset, eval_dataset = load_datasets(script_args, training_args)
     ensure_chat_template_if_needed(tokenizer, train_dataset, training_args)
 
     with training_args.main_process_first(desc="Log processed samples"):
