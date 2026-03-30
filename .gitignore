@@ -6,6 +6,10 @@
 .vscode/
 artifacts/
 gemma-3-4b-finetuned/
+output_lora
+test_dataset.json
+train_dataset.json
+
 
 ### macOS ###
 # General

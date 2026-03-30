@@ -1,4 +1,4 @@
-model_name: "meta-llama/Meta-Llama-3.1-8B-Instruct"
+model_name: "Qwen/Qwen2.5-7B-Instruct"
 
 dataset_name: "beomi/KoAlpaca-v1.1a"
 dataset_path: null
@@ -9,9 +9,10 @@ input_key: "input"
 answer_key: "output"
 attn_implementation: "sdpa"
 preview_samples: 2
+gpu_memory_limit_gb: 10.0
 
-output_dir: "./llama-3.1-korean-8b-hf-5-epoch"
-run_name: "llama-3.1-korean-8b-full-ft"
+output_dir: "./qwen-2.5-korean-7b-hf-5-epoch"
+run_name: "qwen-2.5-korean-7b-full-ft"
 report_to:
   - "wandb"
 

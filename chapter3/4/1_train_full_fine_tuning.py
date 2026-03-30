@@ -26,7 +26,7 @@ DEFAULT_SYSTEM_PROMPT = (
 @dataclass
 class ScriptArguments:
     model_name: str = field(
-        default="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        default="Qwen/Qwen2.5-7B-Instruct",
         metadata={"help": "학습에 사용할 Hugging Face 모델 ID"},
     )
     dataset_name: str | None = field(
@@ -75,6 +75,10 @@ class ScriptArguments:
         default=2,
         metadata={"help": "전처리된 샘플 미리보기 개수"},
     )
+    gpu_memory_limit_gb: float | None = field(
+        default=10.0,
+        metadata={"help": "프로세스당 GPU 메모리 최대 사용량(GB). None 또는 0 이하면 제한하지 않습니다."},
+    )
     attn_implementation: str = field(
         default="sdpa",
         metadata={"help": "모델 로딩 시 사용할 attention 구현"},
@@ -82,7 +86,11 @@ class ScriptArguments:
 
 
 def maybe_hf_login() -> None:
-    token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN")
+    token = (
+        os.getenv("HF_TOKEN")
+        or os.getenv("HUGGINGFACE_TOKEN")
+        or os.getenv("HUGGINGFACE_HUB_TOKEN")
+    )
     if token:
         login(token=token, add_to_git_credential=False)
 
@@ -161,6 +169,36 @@ def supports_bf16(capabilities: list[tuple[int, int]]) -> bool:
 
 def is_primary_process() -> bool:
     return os.environ.get("LOCAL_RANK", "0") == "0"
+
+
+def prepare_cuda_device() -> int | None:
+    if not torch.cuda.is_available():
+        return None
+
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if 0 <= local_rank < torch.cuda.device_count():
+        torch.cuda.set_device(local_rank)
+        return local_rank
+
+    torch.cuda.set_device(0)
+    return 0
+
+
+def apply_gpu_memory_limit(limit_gb: float | None, device_index: int | None) -> None:
+    if limit_gb is None or limit_gb <= 0 or device_index is None:
+        return
+
+    total_memory_bytes = torch.cuda.get_device_properties(device_index).total_memory
+    limit_bytes = int(limit_gb * (1024**3))
+    fraction = min(max(limit_bytes / total_memory_bytes, 0.0), 1.0)
+    torch.cuda.set_per_process_memory_fraction(fraction, device=device_index)
+
+    if is_primary_process():
+        total_memory_gb = total_memory_bytes / (1024**3)
+        print(
+            f"Set GPU memory limit to {limit_gb:.2f} GiB per process "
+            f"on cuda:{device_index} (device total: {total_memory_gb:.2f} GiB)."
+        )
 
 
 def prepare_runtime_args(raw_args: list[str]) -> list[str]:
@@ -343,7 +381,8 @@ def validate_model_access(model_name: str) -> None:
             raise RuntimeError(
                 "Cannot access the configured model on Hugging Face Hub.\n"
                 f"- model_name: {model_name}\n"
-                "- The account behind HF_TOKEN/HUGGINGFACE_HUB_TOKEN (or your cached hf auth login) "
+                "- The account behind HF_TOKEN/HUGGINGFACE_TOKEN/HUGGINGFACE_HUB_TOKEN "
+                "(or your cached hf auth login) "
                 "does not have permission for this gated repo.\n"
                 "- Request access on the model page, or change model_name to a repo you can access."
             ) from error
@@ -401,6 +440,8 @@ def build_model_init_kwargs(training_args: SFTConfig, script_args: ScriptArgumen
 
 def training_function(script_args: ScriptArguments, training_args: SFTConfig) -> None:
     maybe_hf_login()
+    device_index = prepare_cuda_device()
+    apply_gpu_memory_limit(script_args.gpu_memory_limit_gb, device_index)
 
     if training_args.gradient_checkpointing and training_args.gradient_checkpointing_kwargs is None:
         training_args.gradient_checkpointing_kwargs = {"use_reentrant": True}
