@@ -3,6 +3,7 @@
 
 .env
 !.env.template
+.codex
 .vscode/
 artifacts/
 gemma-3-4b-finetuned/
